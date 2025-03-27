@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'register_page.dart';
+import 'services/database_service.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -8,7 +10,47 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final _databaseService = DatabaseService.instance;
   bool _obscureText = true;
+  bool _isLoading = false;
+
+  Future<void> _login() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lütfen email ve şifrenizi girin')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = await _databaseService.loginUser(
+        _emailController.text,
+        _passwordController.text,
+      );
+
+      if (user != null) {
+        // Giriş başarılı
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Email veya şifre hatalı')),
+        );
+      }
+    } catch (e) {
+      print('Giriş hatası: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Giriş yapılırken bir hata oluştu')),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,17 +123,22 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        onPressed: () {
-                          Navigator.pushReplacementNamed(context, '/home');
-                        },
-                        child: Text("Login"),
+                        onPressed: _isLoading ? null : _login,
+                        child: _isLoading
+                            ? CircularProgressIndicator()
+                            : Text("Login"),
                       ),
                       TextButton(
                         onPressed: () {},
                         child: Text("Forgot Password?"),
                       ),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => RegisterPage()),
+                          );
+                        },
                         child: Text("Create Account"),
                       ),
                     ],

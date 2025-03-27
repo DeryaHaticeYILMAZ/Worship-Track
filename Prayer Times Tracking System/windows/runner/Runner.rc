@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "untitled" "\0"
+            VALUE "CompanyName", "Prayer Times" "\0"
+            VALUE "FileDescription", "Prayer Times" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "untitled" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "untitled.exe" "\0"
-            VALUE "ProductName", "untitled" "\0"
+            VALUE "InternalName", "Prayer Times" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2024 Prayer Times. All rights reserved." "\0"
+            VALUE "OriginalFilename", "Prayer Times.exe" "\0"
+            VALUE "ProductName", "Prayer Times" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
@@ -108,7 +108,8 @@ END
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////
 
-
+// Add Windows 10 app manifest for location permissions
+1 24 "app.manifest"
 
 #ifndef APSTUDIO_INVOKED
 /////////////////////////////////////////////////////////////////////////////

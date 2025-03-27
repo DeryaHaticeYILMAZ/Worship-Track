@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/database_service.dart';
 
 class FastingTrackerScreen extends StatefulWidget {
   @override
@@ -6,10 +7,40 @@ class FastingTrackerScreen extends StatefulWidget {
 }
 
 class _FastingTrackerScreenState extends State<FastingTrackerScreen> {
-  List<Map<String, dynamic>> fastingRecords = [
-    {"date": "10/03/2024", "type": "Ramadan", "completed": false},
-    {"date": "12/03/2024", "type": "Nafl", "completed": true},
-  ];
+  List<Map<String, dynamic>> fastingRecords = [];
+  final DatabaseService _databaseService = DatabaseService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFastingRecords();
+  }
+
+  Future<void> _loadFastingRecords() async {
+    try {
+      final records = await _databaseService.getFastingRecords();
+      setState(() {
+        fastingRecords = records;
+      });
+    } catch (e) {
+      print('Kayıtları yükleme hatası: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kayıtlar yüklenirken bir hata oluştu')),
+      );
+    }
+  }
+
+  Future<void> _updateFastingRecord(int id, bool completed) async {
+    try {
+      await _databaseService.updateFastingRecord(id, completed);
+      await _loadFastingRecords();
+    } catch (e) {
+      print('Kayıt güncelleme hatası: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kayıt güncellenirken bir hata oluştu')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,15 +62,16 @@ class _FastingTrackerScreenState extends State<FastingTrackerScreen> {
               child: ListView.builder(
                 itemCount: fastingRecords.length,
                 itemBuilder: (context, index) {
+                  final record = fastingRecords[index];
                   return Card(
                     child: ListTile(
-                      title: Text("${fastingRecords[index]["date"]} - ${fastingRecords[index]["type"]}"),
+                      title: Text("${record["date"]} - ${record["type"]}"),
                       trailing: Checkbox(
-                        value: fastingRecords[index]["completed"],
+                        value: record["completed"],
                         onChanged: (bool? value) {
-                          setState(() {
-                            fastingRecords[index]["completed"] = value;
-                          });
+                          if (value != null) {
+                            _updateFastingRecord(record["id"], value);
+                          }
                         },
                       ),
                     ),
@@ -50,6 +82,18 @@ class _FastingTrackerScreenState extends State<FastingTrackerScreen> {
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // Yeni kayıt ekleme dialogu buraya eklenecek
+        },
+        child: Icon(Icons.add),
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _databaseService.close();
+    super.dispose();
   }
 }

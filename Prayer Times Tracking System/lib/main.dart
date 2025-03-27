@@ -1,33 +1,33 @@
 import 'package:flutter/material.dart';
-import 'splash_screen.dart';
-import 'login_screen.dart';
-import 'home_screen.dart';
-import 'missed_prayers_screen.dart';
-import 'fasting_tracker_screen.dart';
-import 'reading_tracker_screen.dart';
-import 'settings_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/home_screen.dart';
+import 'screens/historical_prayer_times_screen.dart';
+import 'screens/missed_prayers_screen.dart';
 
-void main() {
-  runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  runApp(MyApp(prefs: prefs));
 }
 
 class MyApp extends StatelessWidget {
+  final SharedPreferences prefs;
+
+  const MyApp({super.key, required this.prefs});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Prayer Times App',
+      title: 'Prayer Times Tracker',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.green,
+        useMaterial3: true,
       ),
       initialRoute: '/',
       routes: {
-        '/': (context) => SplashScreen(),
-        '/login': (context) => LoginScreen(),
-        '/home': (context) => HomeScreen(),
-        '/missed-prayers': (context) => MissedPrayersScreen(),
-        '/fasting-tracker': (context) => FastingTrackerScreen(),
-        '/reading-tracker': (context) => ReadingTrackerScreen(),
-        '/settings': (context) => SettingsScreen(),
+        '/': (context) => const HomeScreen(),
+        '/historical': (context) => const HistoricalPrayerTimesScreen(),
+        '/missed': (context) => const MissedPrayersScreen(),
       },
     );
   }
