@@ -26,27 +26,23 @@ class PrayerStatus {
     this.ishaPrayed = false,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'date': date.toIso8601String(),
-      'fajrPrayed': fajrPrayed,
-      'dhuhrPrayed': dhuhrPrayed,
-      'asrPrayed': asrPrayed,
-      'maghribPrayed': maghribPrayed,
-      'ishaPrayed': ishaPrayed,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'date': date.toIso8601String(),
+    'fajrPrayed': fajrPrayed,
+    'dhuhrPrayed': dhuhrPrayed,
+    'asrPrayed': asrPrayed,
+    'maghribPrayed': maghribPrayed,
+    'ishaPrayed': ishaPrayed,
+  };
 
-  factory PrayerStatus.fromJson(Map<String, dynamic> json) {
-    return PrayerStatus(
-      date: DateTime.parse(json['date']),
-      fajrPrayed: json['fajrPrayed'] ?? false,
-      dhuhrPrayed: json['dhuhrPrayed'] ?? false,
-      asrPrayed: json['asrPrayed'] ?? false,
-      maghribPrayed: json['maghribPrayed'] ?? false,
-      ishaPrayed: json['ishaPrayed'] ?? false,
-    );
-  }
+  factory PrayerStatus.fromJson(Map<String, dynamic> json) => PrayerStatus(
+    date: DateTime.parse(json['date']),
+    fajrPrayed: json['fajrPrayed'] ?? false,
+    dhuhrPrayed: json['dhuhrPrayed'] ?? false,
+    asrPrayed: json['asrPrayed'] ?? false,
+    maghribPrayed: json['maghribPrayed'] ?? false,
+    ishaPrayed: json['ishaPrayed'] ?? false,
+  );
 
   bool get isCompleted {
     return fajrPrayed && dhuhrPrayed && asrPrayed && maghribPrayed && ishaPrayed;

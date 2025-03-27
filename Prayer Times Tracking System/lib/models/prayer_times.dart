@@ -1,13 +1,13 @@
 import 'package:intl/intl.dart';
 
 class PrayerTimes {
+  final DateTime date;
   final String fajr;
   final String sunrise;
   final String dhuhr;
   final String asr;
   final String maghrib;
   final String isha;
-  final DateTime date;
   
   // Prayer status tracking
   bool fajrPrayed;
@@ -17,13 +17,13 @@ class PrayerTimes {
   bool ishaPrayed;
 
   PrayerTimes({
+    required this.date,
     required this.fajr,
     required this.sunrise,
     required this.dhuhr,
     required this.asr,
     required this.maghrib,
     required this.isha,
-    required this.date,
     this.fajrPrayed = false,
     this.dhuhrPrayed = false,
     this.asrPrayed = false,
@@ -32,50 +32,57 @@ class PrayerTimes {
   });
 
   factory PrayerTimes.fromJson(Map<String, dynamic> json) {
-    final timings = json['data']['timings'];
-    final dateStr = json['data']['date']['gregorian']['date'];
-    
-    // API'den gelen 24 saat formatındaki saatleri 12 saat formatına çevir
-    String formatTime(String time24) {
-      try {
-        final parsedTime = DateFormat('HH:mm').parse(time24);
-        return DateFormat('hh:mm a').format(parsedTime);
-      } catch (e) {
-        return time24; // Hata durumunda orijinal değeri döndür
-      }
-    }
-
     return PrayerTimes(
-      fajr: formatTime(timings['Fajr']),
-      sunrise: formatTime(timings['Sunrise']),
-      dhuhr: formatTime(timings['Dhuhr']),
-      asr: formatTime(timings['Asr']),
-      maghrib: formatTime(timings['Maghrib']),
-      isha: formatTime(timings['Isha']),
-      date: DateFormat('dd-MM-yyyy').parse(dateStr),
+      date: DateFormat('dd.MM.yyyy').parse(json['MiladiTarihKisa']),
+      fajr: json['Imsak'],
+      sunrise: json['Gunes'],
+      dhuhr: json['Ogle'],
+      asr: json['Ikindi'],
+      maghrib: json['Aksam'],
+      isha: json['Yatsi'],
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'date': DateFormat('dd.MM.yyyy').format(date),
+    'fajr': fajr,
+    'sunrise': sunrise,
+    'dhuhr': dhuhr,
+    'asr': asr,
+    'maghrib': maghrib,
+    'isha': isha,
+  };
+
   String getNextPrayer() {
     final now = DateTime.now();
-    final currentTime = DateFormat('HH:mm').format(now);
+    final currentHour = now.hour;
+    final currentMinute = now.minute;
     
     final prayers = [
-      {'name': 'Fajr', 'time': fajr},
-      {'name': 'Sunrise', 'time': sunrise},
-      {'name': 'Dhuhr', 'time': dhuhr},
-      {'name': 'Asr', 'time': asr},
-      {'name': 'Maghrib', 'time': maghrib},
-      {'name': 'Isha', 'time': isha},
+      {'name': 'Sabah', 'time': fajr},
+      {'name': 'Güneş', 'time': sunrise},
+      {'name': 'Öğle', 'time': dhuhr},
+      {'name': 'İkindi', 'time': asr},
+      {'name': 'Akşam', 'time': maghrib},
+      {'name': 'Yatsı', 'time': isha},
     ];
 
     for (var prayer in prayers) {
-      if (currentTime.compareTo(prayer['time']!) < 0) {
-        return prayer['name']!;
+      final prayerTime = prayer['time']!.split(':');
+      final prayerHour = int.parse(prayerTime[0]);
+      final prayerMinute = int.parse(prayerTime[1]);
+      
+      if (currentHour < prayerHour || 
+         (currentHour == prayerHour && currentMinute < prayerMinute)) {
+        return '${prayer['name']} - ${prayer['time']}';
       }
     }
+    
+    return 'Sabah - $fajr';
+  }
 
-    return 'Fajr'; // If all prayers have passed, return next day's Fajr
+  String formatTimeForDisplay(String time) {
+    return time;
   }
 
   DateTime getPrayerDateTime(String prayerTime) {
@@ -93,13 +100,13 @@ class PrayerTimes {
   // Convert to Map for storage
   Map<String, dynamic> toMap() {
     return {
+      'date': date.toIso8601String(),
       'fajr': fajr,
       'sunrise': sunrise,
       'dhuhr': dhuhr,
       'asr': asr,
       'maghrib': maghrib,
       'isha': isha,
-      'date': date.toIso8601String(),
       'fajrPrayed': fajrPrayed,
       'dhuhrPrayed': dhuhrPrayed,
       'asrPrayed': asrPrayed,
@@ -111,18 +118,35 @@ class PrayerTimes {
   // Create from Map for storage retrieval
   factory PrayerTimes.fromMap(Map<String, dynamic> map) {
     return PrayerTimes(
+      date: DateTime.parse(map['date']),
       fajr: map['fajr'] ?? '00:00',
       sunrise: map['sunrise'] ?? '00:00',
       dhuhr: map['dhuhr'] ?? '00:00',
       asr: map['asr'] ?? '00:00',
       maghrib: map['maghrib'] ?? '00:00',
       isha: map['isha'] ?? '00:00',
-      date: DateTime.parse(map['date']),
       fajrPrayed: map['fajrPrayed'] ?? false,
       dhuhrPrayed: map['dhuhrPrayed'] ?? false,
       asrPrayed: map['asrPrayed'] ?? false,
       maghribPrayed: map['maghribPrayed'] ?? false,
       ishaPrayed: map['ishaPrayed'] ?? false,
     );
+  }
+
+  bool isPrayerPrayed(String prayer) {
+    switch (prayer) {
+      case 'fajr':
+        return fajrPrayed;
+      case 'dhuhr':
+        return dhuhrPrayed;
+      case 'asr':
+        return asrPrayed;
+      case 'maghrib':
+        return maghribPrayed;
+      case 'isha':
+        return ishaPrayed;
+      default:
+        return false;
+    }
   }
 } 

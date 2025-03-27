@@ -1,9 +1,38 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 import '../models/prayer_status.dart';
 
 class PrayerStatusService {
   static const String _prayerStatusesKey = 'prayer_statuses';
+  static Database? _database;
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDatabase();
+    return _database!;
+  }
+
+  Future<Database> _initDatabase() async {
+    String path = join(await getDatabasesPath(), 'prayer_statuses.db');
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: (Database db, int version) async {
+        await db.execute('''
+          CREATE TABLE prayer_statuses(
+            date TEXT PRIMARY KEY,
+            fajr_prayed INTEGER,
+            dhuhr_prayed INTEGER,
+            asr_prayed INTEGER,
+            maghrib_prayed INTEGER,
+            isha_prayed INTEGER
+          )
+        ''');
+      },
+    );
+  }
 
   // Tüm namaz durumlarını kaydet
   Future<void> savePrayerStatuses(List<PrayerStatus> statuses) async {
@@ -19,82 +48,46 @@ class PrayerStatusService {
 
   // Tüm namaz durumlarını getir
   Future<List<PrayerStatus>> getAllPrayerStatuses() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final statusesJson = prefs.getString(_prayerStatusesKey);
-      
-      if (statusesJson == null || statusesJson.isEmpty) {
-        return [];
-      }
-
-      final List<dynamic> decodedList = json.decode(statusesJson);
-      return decodedList.map((json) => PrayerStatus.fromJson(json)).toList();
-    } catch (e) {
-      print('Error getting prayer statuses: $e');
-      return [];
-    }
-  }
-
-  // Belirli bir tarihteki namaz durumlarını getir
-  Future<PrayerStatus?> getPrayerStatusForDate(DateTime date) async {
-    try {
-      final statuses = await getAllPrayerStatuses();
-      return statuses.firstWhere(
-        (status) => status.date.year == date.year &&
-                    status.date.month == date.month &&
-                    status.date.day == date.day,
-        orElse: () => PrayerStatus(
-          date: date,
-          fajrPrayed: false,
-          dhuhrPrayed: false,
-          asrPrayed: false,
-          maghribPrayed: false,
-          ishaPrayed: false,
-        ),
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('prayer_statuses');
+    
+    return List.generate(maps.length, (i) {
+      return PrayerStatus(
+        date: DateTime.parse(maps[i]['date']),
+        fajrPrayed: maps[i]['fajr_prayed'] == 1,
+        dhuhrPrayed: maps[i]['dhuhr_prayed'] == 1,
+        asrPrayed: maps[i]['asr_prayed'] == 1,
+        maghribPrayed: maps[i]['maghrib_prayed'] == 1,
+        ishaPrayed: maps[i]['isha_prayed'] == 1,
       );
-    } catch (e) {
-      print('Error getting prayer status for date: $e');
-      return null;
-    }
+    });
   }
 
   // Belirli bir tarihteki namaz durumunu güncelle
   Future<void> updatePrayerStatus(PrayerStatus status) async {
-    try {
-      final statuses = await getAllPrayerStatuses();
-      final index = statuses.indexWhere(
-        (s) => s.date.year == status.date.year &&
-                s.date.month == status.date.month &&
-                s.date.day == status.date.day,
-      );
-
-      if (index != -1) {
-        statuses[index] = status;
-      } else {
-        statuses.add(status);
-      }
-
-      await savePrayerStatuses(statuses);
-    } catch (e) {
-      print('Error updating prayer status: $e');
-      rethrow;
-    }
+    final db = await database;
+    await db.insert(
+      'prayer_statuses',
+      {
+        'date': status.date.toIso8601String(),
+        'fajr_prayed': status.fajrPrayed ? 1 : 0,
+        'dhuhr_prayed': status.dhuhrPrayed ? 1 : 0,
+        'asr_prayed': status.asrPrayed ? 1 : 0,
+        'maghrib_prayed': status.maghribPrayed ? 1 : 0,
+        'isha_prayed': status.ishaPrayed ? 1 : 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   // Belirli bir tarihteki namaz durumunu sil
   Future<void> deletePrayerStatus(DateTime date) async {
-    try {
-      final statuses = await getAllPrayerStatuses();
-      statuses.removeWhere(
-        (status) => status.date.year == date.year &&
-                    status.date.month == date.month &&
-                    status.date.day == date.day,
-      );
-      await savePrayerStatuses(statuses);
-    } catch (e) {
-      print('Error deleting prayer status: $e');
-      rethrow;
-    }
+    final db = await database;
+    await db.delete(
+      'prayer_statuses',
+      where: 'date = ?',
+      whereArgs: [date.toIso8601String()],
+    );
   }
 
   // Tüm namaz durumlarını sil
@@ -106,5 +99,30 @@ class PrayerStatusService {
       print('Error deleting all prayer statuses: $e');
       rethrow;
     }
+  }
+
+  Future<PrayerStatus?> getPrayerStatusForDate(DateTime date) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'prayer_statuses',
+      where: 'date = ?',
+      whereArgs: [date.toIso8601String()],
+    );
+
+    if (maps.isEmpty) return null;
+
+    return PrayerStatus(
+      date: DateTime.parse(maps[0]['date']),
+      fajrPrayed: maps[0]['fajr_prayed'] == 1,
+      dhuhrPrayed: maps[0]['dhuhr_prayed'] == 1,
+      asrPrayed: maps[0]['asr_prayed'] == 1,
+      maghribPrayed: maps[0]['maghrib_prayed'] == 1,
+      ishaPrayed: maps[0]['isha_prayed'] == 1,
+    );
+  }
+
+  Future<void> close() async {
+    final db = await database;
+    db.close();
   }
 } 

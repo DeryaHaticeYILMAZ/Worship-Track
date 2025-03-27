@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/prayer_times.dart';
+import '../models/prayer_status.dart';
 import '../services/diyanet_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import '../services/prayer_status_service.dart';
 
 class HistoricalPrayerTimes extends StatefulWidget {
   const HistoricalPrayerTimes({Key? key}) : super(key: key);
 
   @override
-  _HistoricalPrayerTimesState createState() => _HistoricalPrayerTimesState();
+  State<HistoricalPrayerTimes> createState() => _HistoricalPrayerTimesState();
 }
 
 class _HistoricalPrayerTimesState extends State<HistoricalPrayerTimes> {
   final DiyanetService _diyanetService = DiyanetService();
-  List<PrayerTimes> _historicalPrayerTimes = [];
+  final PrayerStatusService _statusService = PrayerStatusService();
+  List<PrayerTimes> _prayerTimes = [];
   bool _isLoading = true;
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -25,113 +27,76 @@ class _HistoricalPrayerTimesState extends State<HistoricalPrayerTimes> {
 
   Future<void> _loadHistoricalPrayerTimes() async {
     setState(() => _isLoading = true);
-    
+
     try {
-      // Load saved prayer statuses
-      final prefs = await SharedPreferences.getInstance();
-      final savedStatuses = prefs.getString('prayer_statuses') ?? '{}';
-      Map<String, dynamic> statusesMap;
-      try {
-        statusesMap = Map<String, dynamic>.from(json.decode(savedStatuses));
-      } catch (e) {
-        print('Error parsing saved statuses: $e');
-        statusesMap = {};
-      }
-
-      // Get last 7 days of prayer times
-      final now = DateTime.now();
-      final sevenDaysAgo = now.subtract(const Duration(days: 7));
-      final prayerTimes = await _diyanetService.getHistoricalPrayerTimes(sevenDaysAgo, now);
-
-      // Apply saved statuses to prayer times
-      for (var prayerTime in prayerTimes) {
-        final dateKey = DateFormat('yyyy-MM-dd').format(prayerTime.date);
-        if (statusesMap.containsKey(dateKey)) {
-          try {
-            final status = Map<String, dynamic>.from(statusesMap[dateKey]);
-            prayerTime.fajrPrayed = status['fajr'] ?? false;
-            prayerTime.dhuhrPrayed = status['dhuhr'] ?? false;
-            prayerTime.asrPrayed = status['asr'] ?? false;
-            prayerTime.maghribPrayed = status['maghrib'] ?? false;
-            prayerTime.ishaPrayed = status['isha'] ?? false;
-          } catch (e) {
-            print('Error parsing status for date $dateKey: $e');
-          }
+      // Son 7 günün namaz vakitlerini getir
+      final endDate = DateTime.now();
+      final startDate = endDate.subtract(const Duration(days: 7));
+      
+      _prayerTimes = await _diyanetService.getHistoricalPrayerTimes(startDate, endDate);
+      
+      // Her gün için namaz durumlarını yükle
+      for (var prayerTime in _prayerTimes) {
+        final status = await _statusService.getPrayerStatusForDate(prayerTime.date);
+        if (status != null) {
+          prayerTime.fajrPrayed = status.fajrPrayed;
+          prayerTime.dhuhrPrayed = status.dhuhrPrayed;
+          prayerTime.asrPrayed = status.asrPrayed;
+          prayerTime.maghribPrayed = status.maghribPrayed;
+          prayerTime.ishaPrayed = status.ishaPrayed;
         }
       }
 
-      setState(() {
-        _historicalPrayerTimes = prayerTimes;
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
+          SnackBar(
+            content: Text('Hata: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
 
-  Future<void> _togglePrayerStatus(PrayerTimes prayerTime, String prayer) async {
-    setState(() {
-      switch (prayer) {
-        case 'fajr':
-          prayerTime.fajrPrayed = !prayerTime.fajrPrayed;
-          break;
-        case 'dhuhr':
-          prayerTime.dhuhrPrayed = !prayerTime.dhuhrPrayed;
-          break;
-        case 'asr':
-          prayerTime.asrPrayed = !prayerTime.asrPrayed;
-          break;
-        case 'maghrib':
-          prayerTime.maghribPrayed = !prayerTime.maghribPrayed;
-          break;
-        case 'isha':
-          prayerTime.ishaPrayed = !prayerTime.ishaPrayed;
-          break;
-      }
-    });
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
 
-    try {
-      // Save updated statuses
-      final prefs = await SharedPreferences.getInstance();
-      final savedStatuses = prefs.getString('prayer_statuses') ?? '{}';
-      Map<String, dynamic> statusesMap;
-      try {
-        statusesMap = Map<String, dynamic>.from(json.decode(savedStatuses));
-      } catch (e) {
-        print('Error parsing saved statuses: $e');
-        statusesMap = {};
-      }
-      
-      final dateKey = DateFormat('yyyy-MM-dd').format(prayerTime.date);
-      statusesMap[dateKey] = {
-        'fajr': prayerTime.fajrPrayed,
-        'dhuhr': prayerTime.dhuhrPrayed,
-        'asr': prayerTime.asrPrayed,
-        'maghrib': prayerTime.maghribPrayed,
-        'isha': prayerTime.ishaPrayed,
-      };
-
-      await prefs.setString('prayer_statuses', json.encode(statusesMap));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: Namaz durumu kaydedilemedi - $e')),
-        );
-      }
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+      _loadHistoricalPrayerTimes();
     }
+  }
+
+  String _getPrayerStatus(PrayerTimes prayerTime) {
+    int prayedCount = 0;
+    if (prayerTime.fajrPrayed) prayedCount++;
+    if (prayerTime.dhuhrPrayed) prayedCount++;
+    if (prayerTime.asrPrayed) prayedCount++;
+    if (prayerTime.maghribPrayed) prayedCount++;
+    if (prayerTime.ishaPrayed) prayedCount++;
+    return '$prayedCount/5 Namaz Kılındı';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Geçmiş Namaz Kayıtları'),
+        title: const Text('Geçmiş Namazlar'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_today),
+            onPressed: _selectDate,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadHistoricalPrayerTimes,
@@ -140,54 +105,49 @@ class _HistoricalPrayerTimesState extends State<HistoricalPrayerTimes> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: _historicalPrayerTimes.length,
-              itemBuilder: (context, index) {
-                final prayerTime = _historicalPrayerTimes[index];
-                final date = DateFormat('dd MMMM yyyy', 'tr_TR').format(prayerTime.date);
-                
-                return Card(
-                  margin: const EdgeInsets.all(8.0),
-                  child: ExpansionTile(
-                    title: Text(date),
-                    children: [
-                      _buildPrayerTile(prayerTime, 'Sabah', 'fajr', prayerTime.fajr, prayerTime.fajrPrayed),
-                      _buildPrayerTile(prayerTime, 'Öğle', 'dhuhr', prayerTime.dhuhr, prayerTime.dhuhrPrayed),
-                      _buildPrayerTile(prayerTime, 'İkindi', 'asr', prayerTime.asr, prayerTime.asrPrayed),
-                      _buildPrayerTile(prayerTime, 'Akşam', 'maghrib', prayerTime.maghrib, prayerTime.maghribPrayed),
-                      _buildPrayerTile(prayerTime, 'Yatsı', 'isha', prayerTime.isha, prayerTime.ishaPrayed),
-                    ],
-                  ),
-                );
-              },
-            ),
+          : _prayerTimes.isEmpty
+              ? const Center(
+                  child: Text('Namaz vakitleri bulunamadı'),
+                )
+              : ListView.builder(
+                  itemCount: _prayerTimes.length,
+                  itemBuilder: (context, index) {
+                    final prayerTime = _prayerTimes[index];
+                    final date = DateFormat('dd MMMM yyyy', 'tr_TR').format(prayerTime.date);
+                    final status = _getPrayerStatus(prayerTime);
+
+                    return Card(
+                      margin: const EdgeInsets.all(8.0),
+                      child: ExpansionTile(
+                        title: Text(date),
+                        subtitle: Text(
+                          status,
+                          style: TextStyle(
+                            color: status.startsWith('5') ? Colors.green : Colors.orange,
+                          ),
+                        ),
+                        children: [
+                          _buildPrayerTile(prayerTime, 'Sabah', prayerTime.fajr, prayerTime.fajrPrayed),
+                          _buildPrayerTile(prayerTime, 'Öğle', prayerTime.dhuhr, prayerTime.dhuhrPrayed),
+                          _buildPrayerTile(prayerTime, 'İkindi', prayerTime.asr, prayerTime.asrPrayed),
+                          _buildPrayerTile(prayerTime, 'Akşam', prayerTime.maghrib, prayerTime.maghribPrayed),
+                          _buildPrayerTile(prayerTime, 'Yatsı', prayerTime.isha, prayerTime.ishaPrayed),
+                        ],
+                      ),
+                    );
+                  },
+                ),
     );
   }
 
-  Widget _buildPrayerTile(PrayerTimes prayerTime, String title, String prayer, String time, bool isPrayed) {
+  Widget _buildPrayerTile(PrayerTimes prayerTime, String name, String time, bool prayed) {
     return ListTile(
-      title: Text(title),
-      subtitle: Text(time),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isPrayed ? Icons.check_circle : Icons.cancel,
-            color: isPrayed ? Colors.green : Colors.red,
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () => _togglePrayerStatus(prayerTime, prayer),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isPrayed ? Colors.red : Colors.green,
-            ),
-            child: Text(
-              isPrayed ? 'Kılınmadı' : 'Kılındı',
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
+      leading: Icon(
+        prayed ? Icons.check_circle : Icons.access_time,
+        color: prayed ? Colors.green : Colors.orange,
       ),
+      title: Text(name),
+      subtitle: Text(time),
     );
   }
 } 

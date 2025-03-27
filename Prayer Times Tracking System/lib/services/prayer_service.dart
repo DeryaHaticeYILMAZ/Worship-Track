@@ -1,31 +1,27 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:geolocator/geolocator.dart';
 import '../models/prayer_times.dart';
-import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
 
 class PrayerService {
-  static const String baseUrl = 'http://api.aladhan.com/v1/timings';
-
+  static const String _baseUrl = 'http://api.aladhan.com/v1';
+  
   Future<Position> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      throw Exception('Konum servisleri devre dışı.');
+      throw Exception('Konum servisleri devre dışı');
     }
 
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        throw Exception('Konum izni reddedildi.');
+        throw Exception('Konum izni reddedildi');
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      throw Exception('Konum izni kalıcı olarak reddedildi.');
+      throw Exception('Konum izni kalıcı olarak reddedildi');
     }
 
     return await Geolocator.getCurrentPosition();
@@ -35,66 +31,79 @@ class PrayerService {
     try {
       final position = await _getCurrentLocation();
       final now = DateTime.now();
-      final date = DateFormat('dd-MM-yyyy').format(now);
+      final date = '${now.day}-${now.month}-${now.year}';
       
-      final queryParameters = {
-        'latitude': position.latitude.toString(),
-        'longitude': position.longitude.toString(),
-        'method': '2', // ISNA method
-        'date': date,
-      };
-
-      final uri = Uri.parse(baseUrl).replace(queryParameters: queryParameters);
-      print('API URL: $uri'); // Debug için URL'yi yazdır
-
-      final response = await http.get(uri);
-      print('API Response: ${response.body}'); // Debug için yanıtı yazdır
-
+      final response = await http.get(Uri.parse(
+        '$_baseUrl/timings/$date?latitude=${position.latitude}&longitude=${position.longitude}&method=13'
+      ));
+      
       if (response.statusCode == 200) {
-        return PrayerTimes.fromJson(json.decode(response.body));
+        final data = json.decode(response.body);
+        final timings = data['data']['timings'];
+        
+        return PrayerTimes(
+          date: now,
+          fajr: _formatTime(timings['Fajr']),
+          sunrise: _formatTime(timings['Sunrise']),
+          dhuhr: _formatTime(timings['Dhuhr']),
+          asr: _formatTime(timings['Asr']),
+          maghrib: _formatTime(timings['Maghrib']),
+          isha: _formatTime(timings['Isha']),
+        );
       } else {
-        throw Exception('Namaz vakitleri alınamadı: ${response.statusCode} - ${response.body}');
+        throw Exception('Namaz vakitleri alınamadı: ${response.statusCode}');
       }
     } catch (e) {
-      print('Namaz vakitleri getirme hatası: $e');
-      rethrow;
+      throw Exception('Namaz vakitleri alınırken hata oluştu: $e');
     }
   }
 
-  Future<List<PrayerTimes>> getMonthlyPrayerTimes() async {
+  Future<List<PrayerTimes>> getHistoricalPrayerTimes(DateTime startDate, DateTime endDate) async {
     try {
       final position = await _getCurrentLocation();
-      final now = DateTime.now();
-      final List<PrayerTimes> monthlyTimes = [];
-
-      for (int day = 1; day <= 31; day++) {
+      List<PrayerTimes> prayerTimes = [];
+      
+      for (var date = startDate; date.isBefore(endDate.add(const Duration(days: 1))); date = date.add(const Duration(days: 1))) {
+        final formattedDate = '${date.day}-${date.month}-${date.year}';
+        
         try {
-          final date = DateTime(now.year, now.month, day);
-          final formattedDate = DateFormat('dd-MM-yyyy').format(date);
+          final response = await http.get(Uri.parse(
+            '$_baseUrl/timings/$formattedDate?latitude=${position.latitude}&longitude=${position.longitude}&method=13'
+          ));
           
-          final queryParameters = {
-            'latitude': position.latitude.toString(),
-            'longitude': position.longitude.toString(),
-            'method': '2', // ISNA method
-            'date': formattedDate,
-          };
-
-          final uri = Uri.parse(baseUrl).replace(queryParameters: queryParameters);
-          final response = await http.get(uri);
-
           if (response.statusCode == 200) {
-            monthlyTimes.add(PrayerTimes.fromJson(json.decode(response.body)));
+            final data = json.decode(response.body);
+            if (data['data'] != null && data['data']['timings'] != null) {
+              final timings = data['data']['timings'];
+              
+              prayerTimes.add(PrayerTimes(
+                date: date,
+                fajr: _formatTime(timings['Fajr']),
+                sunrise: _formatTime(timings['Sunrise']),
+                dhuhr: _formatTime(timings['Dhuhr']),
+                asr: _formatTime(timings['Asr']),
+                maghrib: _formatTime(timings['Maghrib']),
+                isha: _formatTime(timings['Isha']),
+              ));
+            }
           }
         } catch (e) {
-          print('Gün $day için namaz vakitleri alınamadı: $e');
-          continue;
+          print('Error fetching prayer times for $formattedDate: $e');
+          continue; // Skip this date and continue with the next one
         }
+        
+        // Add a small delay to avoid rate limiting
+        await Future.delayed(const Duration(milliseconds: 100));
       }
-
-      return monthlyTimes;
+      
+      return prayerTimes;
     } catch (e) {
-      print('Aylık namaz vakitleri getirme hatası: $e');
-      rethrow;
+      throw Exception('Geçmiş namaz vakitleri alınırken hata oluştu: $e');
     }
+  }
+
+  String _formatTime(String time) {
+    // API'den gelen zaman formatını düzenle (örn: "04:30 (EET)" -> "04:30")
+    return time.split(' ').first;
   }
 } 

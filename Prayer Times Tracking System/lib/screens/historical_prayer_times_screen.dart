@@ -1,233 +1,165 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import '../models/prayer_times.dart';
+import '../models/prayer_status.dart';
+import '../services/diyanet_service.dart';
+import '../services/prayer_status_service.dart';
 
 class HistoricalPrayerTimesScreen extends StatefulWidget {
   const HistoricalPrayerTimesScreen({Key? key}) : super(key: key);
 
   @override
-  _HistoricalPrayerTimesScreenState createState() =>
-      _HistoricalPrayerTimesScreenState();
+  State<HistoricalPrayerTimesScreen> createState() => _HistoricalPrayerTimesScreenState();
 }
 
 class _HistoricalPrayerTimesScreenState extends State<HistoricalPrayerTimesScreen> {
-  List<Map<String, dynamic>> _prayerHistory = [];
+  final DiyanetService _diyanetService = DiyanetService();
+  final PrayerStatusService _statusService = PrayerStatusService();
+  List<PrayerTimes> _prayerTimes = [];
   bool _isLoading = true;
-
-  static const primaryColor = Color(0xFF1E88E5);
-  static const backgroundColor = Color(0xFFF5F5F5);
-  static const textColor = Color(0xFF2C3E50);
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _loadPrayerHistory();
+    _loadHistoricalPrayerTimes();
   }
 
-  Future<void> _loadPrayerHistory() async {
+  Future<void> _loadHistoricalPrayerTimes() async {
     setState(() => _isLoading = true);
+
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedStatuses = prefs.getString('prayer_statuses') ?? '{}';
-      final Map<String, dynamic> statusesMap = json.decode(savedStatuses);
-
-      List<Map<String, dynamic>> history = [];
-      statusesMap.forEach((date, status) {
-        final prayers = [
-          {'name': 'Sabah', 'key': 'fajr'},
-          {'name': 'Öğle', 'key': 'dhuhr'},
-          {'name': 'İkindi', 'key': 'asr'},
-          {'name': 'Akşam', 'key': 'maghrib'},
-          {'name': 'Yatsı', 'key': 'isha'},
-        ];
-
-        List<Map<String, dynamic>> dayPrayers = [];
-        for (var prayer in prayers) {
-          dayPrayers.add({
-            'name': prayer['name'],
-            'performed': status[prayer['key']] ?? false,
-          });
+      // Son 7 günün namaz vakitlerini getir
+      final endDate = DateTime.now();
+      final startDate = endDate.subtract(const Duration(days: 7));
+      
+      _prayerTimes = await _diyanetService.getHistoricalPrayerTimes(startDate, endDate);
+      
+      // Her gün için namaz durumlarını yükle
+      for (var prayerTime in _prayerTimes) {
+        final status = await _statusService.getPrayerStatusForDate(prayerTime.date);
+        if (status != null) {
+          prayerTime.fajrPrayed = status.fajrPrayed;
+          prayerTime.dhuhrPrayed = status.dhuhrPrayed;
+          prayerTime.asrPrayed = status.asrPrayed;
+          prayerTime.maghribPrayed = status.maghribPrayed;
+          prayerTime.ishaPrayed = status.ishaPrayed;
         }
+      }
 
-        history.add({
-          'date': date,
-          'prayers': dayPrayers,
-        });
-      });
-
-      // Sort by date, most recent first
-      history.sort((a, b) => b['date'].compareTo(a['date']));
-
-      setState(() {
-        _prayerHistory = history;
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
+          SnackBar(
+            content: Text('Hata: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
 
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+      _loadHistoricalPrayerTimes();
+    }
+  }
+
+  String _getPrayerStatus(PrayerTimes prayerTime) {
+    int prayedCount = 0;
+    if (prayerTime.fajrPrayed) prayedCount++;
+    if (prayerTime.dhuhrPrayed) prayedCount++;
+    if (prayerTime.asrPrayed) prayedCount++;
+    if (prayerTime.maghribPrayed) prayedCount++;
+    if (prayerTime.ishaPrayed) prayedCount++;
+    return '$prayedCount/5 Namaz Kılındı';
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day} ${_getMonthName(date.month)} ${date.year}';
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+    ];
+    return months[month - 1];
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: Theme.of(context).copyWith(
-        primaryColor: primaryColor,
-        scaffoldBackgroundColor: backgroundColor,
-      ),
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: primaryColor,
-          title: Text(
-            'Namaz Geçmişi',
-            style: TextStyle(color: Colors.white),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Geçmiş Namazlar'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_today),
+            onPressed: _selectDate,
           ),
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: Icon(Icons.refresh, color: Colors.white),
-              onPressed: _loadPrayerHistory,
-            ),
-          ],
-        ),
-        body: _isLoading
-            ? Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
-                ),
-              )
-            : _prayerHistory.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.history,
-                          size: 64,
-                          color: primaryColor,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'Henüz namaz geçmişi bulunmamaktadır',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: textColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [primaryColor.withOpacity(0.1), backgroundColor],
-                      ),
-                    ),
-                    child: ListView.builder(
-                      padding: EdgeInsets.all(16),
-                      itemCount: _prayerHistory.length,
-                      itemBuilder: (context, index) {
-                        final dayHistory = _prayerHistory[index];
-                        final date = DateTime.parse(dayHistory['date']);
-                        final formattedDate =
-                            DateFormat('dd MMMM yyyy', 'tr_TR').format(date);
-
-                        return Card(
-                          margin: EdgeInsets.only(bottom: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: primaryColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: Radius.circular(12),
-                                    topRight: Radius.circular(12),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today,
-                                      color: primaryColor,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      formattedDate,
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: textColor,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics: NeverScrollableScrollPhysics(),
-                                itemCount: dayHistory['prayers'].length,
-                                itemBuilder: (context, prayerIndex) {
-                                  final prayer = dayHistory['prayers'][prayerIndex];
-                                  return ListTile(
-                                    leading: Container(
-                                      padding: EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: prayer['performed']
-                                            ? Colors.green.withOpacity(0.1)
-                                            : Colors.red.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        prayer['performed']
-                                            ? Icons.check_circle
-                                            : Icons.cancel,
-                                        color: prayer['performed']
-                                            ? Colors.green
-                                            : Colors.red,
-                                        size: 24,
-                                      ),
-                                    ),
-                                    title: Text(
-                                      prayer['name'],
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                        color: textColor,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      prayer['performed']
-                                          ? 'Kılındı'
-                                          : 'Kılınmadı',
-                                      style: TextStyle(
-                                        color: prayer['performed']
-                                            ? Colors.green
-                                            : Colors.red,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadHistoricalPrayerTimes,
+          ),
+        ],
       ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _prayerTimes.isEmpty
+              ? const Center(
+                  child: Text('Namaz vakitleri bulunamadı'),
+                )
+              : ListView.builder(
+                  itemCount: _prayerTimes.length,
+                  itemBuilder: (context, index) {
+                    final prayerTime = _prayerTimes[index];
+                    final date = _formatDate(prayerTime.date);
+                    final status = _getPrayerStatus(prayerTime);
+
+                    return Card(
+                      margin: const EdgeInsets.all(8.0),
+                      child: ExpansionTile(
+                        title: Text(date),
+                        subtitle: Text(
+                          status,
+                          style: TextStyle(
+                            color: status.startsWith('5') ? Colors.green : Colors.orange,
+                          ),
+                        ),
+                        children: [
+                          _buildPrayerTile(prayerTime, 'Sabah', prayerTime.fajr, prayerTime.fajrPrayed),
+                          _buildPrayerTile(prayerTime, 'Öğle', prayerTime.dhuhr, prayerTime.dhuhrPrayed),
+                          _buildPrayerTile(prayerTime, 'İkindi', prayerTime.asr, prayerTime.asrPrayed),
+                          _buildPrayerTile(prayerTime, 'Akşam', prayerTime.maghrib, prayerTime.maghribPrayed),
+                          _buildPrayerTile(prayerTime, 'Yatsı', prayerTime.isha, prayerTime.ishaPrayed),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+
+  Widget _buildPrayerTile(PrayerTimes prayerTime, String name, String time, bool prayed) {
+    return ListTile(
+      leading: Icon(
+        prayed ? Icons.check_circle : Icons.access_time,
+        color: prayed ? Colors.green : Colors.orange,
+      ),
+      title: Text(name),
+      subtitle: Text(time),
     );
   }
 } 

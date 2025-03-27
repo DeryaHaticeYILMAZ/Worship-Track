@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/prayer_times.dart';
-import '../services/diyanet_service.dart';
-import 'dart:convert';
+import '../models/prayer_status.dart';
+import '../services/prayer_service.dart';
+import '../services/prayer_status_service.dart';
 import 'historical_prayer_times_screen.dart';
 import 'missed_prayers_screen.dart';
 
@@ -15,7 +15,8 @@ class PrayerTimesScreen extends StatefulWidget {
 }
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
-  final DiyanetService _diyanetService = DiyanetService();
+  final PrayerService _prayerService = PrayerService();
+  final PrayerStatusService _prayerStatusService = PrayerStatusService();
   PrayerTimes? _prayerTimes;
   bool _isLoading = true;
 
@@ -35,20 +36,16 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Future<void> _loadPrayerTimes() async {
     setState(() => _isLoading = true);
     try {
-      final prayerTimes = await _diyanetService.getNextPrayerTime();
+      final prayerTimes = await _prayerService.getPrayerTimes();
       
-      final prefs = await SharedPreferences.getInstance();
-      final savedStatuses = prefs.getString('prayer_statuses') ?? '{}';
-      final Map<String, dynamic> statusesMap = json.decode(savedStatuses);
-      
-      final dateKey = DateFormat('yyyy-MM-dd').format(prayerTimes.date);
-      if (statusesMap.containsKey(dateKey)) {
-        final status = statusesMap[dateKey];
-        prayerTimes.fajrPrayed = status['fajr'] ?? false;
-        prayerTimes.dhuhrPrayed = status['dhuhr'] ?? false;
-        prayerTimes.asrPrayed = status['asr'] ?? false;
-        prayerTimes.maghribPrayed = status['maghrib'] ?? false;
-        prayerTimes.ishaPrayed = status['isha'] ?? false;
+      // Load prayer status from database
+      final status = await _prayerStatusService.getPrayerStatusForDate(prayerTimes.date);
+      if (status != null) {
+        prayerTimes.fajrPrayed = status.fajrPrayed;
+        prayerTimes.dhuhrPrayed = status.dhuhrPrayed;
+        prayerTimes.asrPrayed = status.asrPrayed;
+        prayerTimes.maghribPrayed = status.maghribPrayed;
+        prayerTimes.ishaPrayed = status.ishaPrayed;
       }
 
       setState(() {
@@ -59,7 +56,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
+          SnackBar(
+            content: Text('Hata: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -88,20 +88,39 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       }
     });
 
-    final prefs = await SharedPreferences.getInstance();
-    final savedStatuses = prefs.getString('prayer_statuses') ?? '{}';
-    final Map<String, dynamic> statusesMap = json.decode(savedStatuses);
-    
-    final dateKey = DateFormat('yyyy-MM-dd').format(_prayerTimes!.date);
-    statusesMap[dateKey] = {
-      'fajr': _prayerTimes!.fajrPrayed,
-      'dhuhr': _prayerTimes!.dhuhrPrayed,
-      'asr': _prayerTimes!.asrPrayed,
-      'maghrib': _prayerTimes!.maghribPrayed,
-      'isha': _prayerTimes!.ishaPrayed,
-    };
-
-    await prefs.setString('prayer_statuses', json.encode(statusesMap));
+    try {
+      // Save prayer status to database
+      final status = PrayerStatus(
+        date: _prayerTimes!.date,
+        fajrPrayed: _prayerTimes!.fajrPrayed,
+        dhuhrPrayed: _prayerTimes!.dhuhrPrayed,
+        asrPrayed: _prayerTimes!.asrPrayed,
+        maghribPrayed: _prayerTimes!.maghribPrayed,
+        ishaPrayed: _prayerTimes!.ishaPrayed,
+      );
+      
+      await _prayerStatusService.updatePrayerStatus(status);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _prayerTimes!.isPrayerPrayed(prayer) ? 'Namaz kılındı olarak işaretlendi' : 'Namaz kılınmadı olarak işaretlendi'
+            ),
+            backgroundColor: _prayerTimes!.isPrayerPrayed(prayer) ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Namaz durumu güncellenemedi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildDrawer() {
@@ -167,7 +186,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => MissedPrayersScreen(),
+                    builder: (context) => const MissedPrayersScreen(),
                   ),
                 );
               },
