@@ -10,7 +10,6 @@ import 'fasting_tracker_screen.dart';
 import 'reading_tracker_screen.dart';
 import 'settings_screen.dart';
 
-
 void main() {
   runApp(MyApp());
 }
@@ -48,7 +47,6 @@ class MyApp extends StatelessWidget {
               '/reading-tracker': (context) => ReadingTrackerScreen(),
               '/calendar': (context) => CalendarScreen(),
               '/settings': (context) => SettingsScreen(),
-              '/missed-prayers': (context) => MissedPrayersScreen(),
             },
           );
         }

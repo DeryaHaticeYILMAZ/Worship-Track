@@ -30,15 +30,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> fetchPrayersForDate(DateTime date) async {
     final formatted = DateFormat('yyyy-MM-dd').format(date);
+    print("===> Seçilen gün: $formatted");
     final response = await http.get(
       Uri.parse('http://10.0.2.2:5000/missed_prayers?email=$userEmail'),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
+      print("===> Gelen veri:");
+      print(data['missed_prayers']);
       final allPrayers = List<Map<String, dynamic>>.from(data['missed_prayers']);
+
       setState(() {
-        selectedDayPrayers = allPrayers.where((entry) => entry['date'].startsWith(formatted)).toList();
+        selectedDayPrayers = allPrayers.where((entry) {
+          final rawDate = entry['date'];
+          final parsed = DateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", 'en_US').parse(rawDate);
+          return parsed.year == date.year && parsed.month == date.month && parsed.day == date.day;
+        }).toList();
       });
     } else {
       print("Veri çekme hatası: ${response.body}");
@@ -84,8 +92,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               itemCount: selectedDayPrayers.length,
               itemBuilder: (context, index) {
                 final item = selectedDayPrayers[index];
+                final isCompleted = item['completed'] == 1;
+                final iconColor = isCompleted ? Color(0xFFFFD54F) : Colors.red;
+
                 return ListTile(
-                  leading: Icon(Icons.error_outline, color: Colors.red),
+                  leading: Icon(Icons.circle, color: iconColor, size: 14),
                   title: Text(item['prayer_name']),
                   subtitle: Text("Date: ${item['date']}"),
                 );

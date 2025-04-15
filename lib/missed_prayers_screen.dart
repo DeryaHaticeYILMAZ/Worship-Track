@@ -33,7 +33,14 @@ class _MissedPrayersScreenState extends State<MissedPrayersScreen> {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       setState(() {
-        missedPrayers = List<Map<String, dynamic>>.from(data['missed_prayers']);
+        missedPrayers = List<Map<String, dynamic>>.from(data['missed_prayers'])
+            .where((prayer) => prayer['completed'] == 0)
+            .toList()
+          ..sort((a, b) {
+            final dateA = DateFormat('EEE, dd MMM yyyy HH:mm:ss zzz', 'en_US').parse(a['date']);
+            final dateB = DateFormat('EEE, dd MMM yyyy HH:mm:ss zzz', 'en_US').parse(b['date']);
+            return dateB.compareTo(dateA); // büyükten küçüğe
+          });
       });
     } else {
       print('Missed prayers fetch error: ${response.body}');
@@ -51,7 +58,7 @@ class _MissedPrayersScreenState extends State<MissedPrayersScreen> {
       print("date: $formattedDate");
 
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:5000/missed_prayers'),
+        Uri.parse('http://10.0.2.2:5000/complete_missed_prayer'),
         body: {
           'email': userEmail!,
           'prayer_name': prayerName,
