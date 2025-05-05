@@ -1,15 +1,23 @@
-# worship_test
+# Worship-Track
 
-A new Flutter project.
+A Flutter application for tracking worship activities, prayers, and religious practices.
+
+## Features
+
+- Prayer time tracking
+- Fasting tracker
+- Reading tracker
+- Calendar integration
+- Missed prayers tracking
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+This project is built with Flutter. To get started:
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+1. Make sure you have Flutter installed on your system
+2. Clone this repository
+3. Run `flutter pub get` to install dependencies
+4. Run `flutter run` to start the application
 
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
