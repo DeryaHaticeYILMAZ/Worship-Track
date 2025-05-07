@@ -88,5 +88,23 @@ class PrayerTimesService {
       return null;
     }
   }
+
+  Future<PrayerTimesResponse> getPrayerTimesForDate(DateTime date) async {
+    try {
+      final formattedDate = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+      final response = await http.get(
+        Uri.parse('$baseUrl/timingsByCity?city=Kayseri&country=Turkey&method=13&date=$formattedDate'),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        return PrayerTimesResponse.fromJson(jsonData);
+      } else {
+        throw Exception('Failed to load prayer times for date. Status code: \\${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching prayer times for date: $e');
+    }
+  }
 } 
  

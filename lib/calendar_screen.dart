@@ -15,6 +15,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime? _selectedDay;
   String? userEmail;
   List<Map<String, dynamic>> selectedDayPrayers = [];
+  Map<DateTime, List<Map<String, dynamic>>> _missedPrayersByDate = {};
 
   @override
   void initState() {
@@ -25,32 +26,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Future<void> initUserAndLoad() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     userEmail = prefs.getString('userEmail');
-    fetchPrayersForDate(_focusedDay);
+    await fetchAllMissedPrayers();
   }
 
-  Future<void> fetchPrayersForDate(DateTime date) async {
-    final formatted = DateFormat('yyyy-MM-dd').format(date);
-    print("===> Seçilen gün: $formatted");
+  Future<void> fetchAllMissedPrayers() async {
     final response = await http.get(
       Uri.parse('http://10.0.2.2:5000/missed_prayers?email=$userEmail'),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      print("===> Gelen veri:");
-      print(data['missed_prayers']);
       final allPrayers = List<Map<String, dynamic>>.from(data['missed_prayers']);
 
+      Map<DateTime, List<Map<String, dynamic>>> prayersByDate = {};
+      
+      for (var prayer in allPrayers) {
+        final rawDate = prayer['date'];
+        final parsed = DateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", 'en_US').parse(rawDate);
+        final date = DateTime(parsed.year, parsed.month, parsed.day);
+        
+        if (!prayersByDate.containsKey(date)) {
+          prayersByDate[date] = [];
+        }
+        prayersByDate[date]!.add(prayer);
+      }
+
       setState(() {
-        selectedDayPrayers = allPrayers.where((entry) {
-          final rawDate = entry['date'];
-          final parsed = DateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", 'en_US').parse(rawDate);
-          return parsed.year == date.year && parsed.month == date.month && parsed.day == date.day;
-        }).toList();
+        _missedPrayersByDate = prayersByDate;
       });
     } else {
       print("Veri çekme hatası: ${response.body}");
     }
+  }
+
+  Future<void> fetchPrayersForDate(DateTime date) async {
+    final formatted = DateFormat('yyyy-MM-dd').format(date);
+    print("===> Seçilen gün: $formatted");
+    
+    setState(() {
+      selectedDayPrayers = _missedPrayersByDate[DateTime(date.year, date.month, date.day)] ?? [];
+    });
+  }
+
+  bool _hasMissedPrayers(DateTime day) {
+    final date = DateTime(day.year, day.month, day.day);
+    final prayers = _missedPrayersByDate[date] ?? [];
+    return prayers.any((prayer) => prayer['completed'] != 1);
   }
 
   @override
@@ -83,6 +104,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 color: Colors.blue,
                 shape: BoxShape.circle,
               ),
+            ),
+            calendarBuilders: CalendarBuilders(
+              markerBuilder: (context, date, events) {
+                if (_hasMissedPrayers(date)) {
+                  return Positioned(
+                    bottom: 1,
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                }
+                return null;
+              },
             ),
           ),
           Expanded(
